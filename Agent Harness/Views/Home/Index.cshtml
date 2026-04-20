@@ -1,0 +1,210 @@
+@{
+    ViewData["Title"] = "AI Agent Dashboard";
+}
+
+<link rel="stylesheet" href="~/css/dashboard.css" />
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&display=swap" rel="stylesheet">
+
+<div class="dashboard-container">
+    <div class="main-card">
+        <div class="card-header">
+            <h3>🤖 AI Executive Assistant <span class="badge bg-primary ms-2" style="font-size: 0.6rem; vertical-align: middle;">ENTERPRISE</span></h3>
+            <div class="status-indicator">
+                <div class="status-dot"></div>
+                Agent Live & Polling
+            </div>
+        </div>
+        
+        <div class="chat-body" id="chatBox">
+            <!-- Messages will be injected here -->
+            <div class="message-wrapper system">
+                <div class="message-bubble">
+                    System initialized. Connected to Graph API and MCP Toolchain.
+                </div>
+                <div class="message-meta">@DateTime.Now.ToString("HH:mm")</div>
+            </div>
+        </div>
+
+        <div class="chat-footer">
+            <div class="input-container">
+                <input type="text" id="messageInput" placeholder="How can I assist you today?" autocomplete="off">
+                <button id="sendButton">Send</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Side Panel for Notifications -->
+    <div class="side-panel">
+        <div class="side-panel-header">
+            <h3>🔔 Notifications</h3>
+        </div>
+        <div class="side-panel-body" id="notificationBox">
+            <!-- Notifications will be injected here -->
+        </div>
+    </div>
+</div>
+
+<!-- Professional Approval Modal -->
+<div class="modal fade" id="approvalModal" tabindex="-1" aria-hidden="true">
+    <div class="modal-dialog modal-dialog-centered">
+        <div class="modal-content shadow-2xl">
+            <div class="modal-header border-0 pb-0">
+                <h5 class="modal-title text-warning">🛡️ Security Gateway</h5>
+                <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button>
+            </div>
+            <div class="modal-body py-4">
+                <p class="mb-3 opacity-80" id="approvalMessage"></p>
+                <div class="bg-black bg-opacity-30 rounded-xl p-3 mb-0">
+                    <small class="text-muted d-block mb-2 text-uppercase fw-bold">Parameters</small>
+                    <pre id="approvalArgs" class="text-info mb-0 small" style="white-space: pre-wrap;"></pre>
+                </div>
+                <input type="hidden" id="currentRequestId">
+            </div>
+            <div class="modal-footer border-0 pt-0">
+                <button type="button" class="btn btn-outline-light rounded-pill px-4" id="denyButton">Block</button>
+                <button type="button" class="btn btn-primary rounded-pill px-4" id="approveButton">Authorize</button>
+            </div>
+        </div>
+    </div>
+</div>
+
+@section Scripts {
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/microsoft-signalr/6.0.1/signalr.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/marked/marked.min.js"></script>
+    <script>
+        const connection = new signalR.HubConnectionBuilder()
+            .withUrl("/chatHub")
+            .withAutomaticReconnect()
+            .build();
+
+        const approvalModal = new bootstrap.Modal(document.getElementById('approvalModal'));
+
+        function appendMessage(user, message) {
+            const chatBox = document.getElementById("chatBox");
+            const wrapper = document.createElement("div");
+            wrapper.classList.add("message-wrapper");
+            
+            const time = new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+
+            // Use marked.js for professional markdown rendering
+            const renderedContent = (user === "Agent") ? marked.parse(message) : message;
+
+            if (user === "Agent") {
+                wrapper.classList.add("agent");
+                wrapper.innerHTML = `
+                    <div class="message-bubble">${renderedContent}</div>
+                    <div class="message-meta"><strong>🤖 AGENT</strong> • ${time}</div>
+                `;
+            } else if (user === "System") {
+                wrapper.classList.add("system");
+                wrapper.innerHTML = `
+                    <div class="message-bubble">${message}</div>
+                    <div class="message-meta">${time}</div>
+                `;
+            } else {
+                wrapper.classList.add("user");
+                wrapper.innerHTML = `
+                    <div class="message-bubble">${message}</div>
+                    <div class="message-meta">${time} • <strong>YOU</strong></div>
+                `;
+            }
+
+            const indicator = document.getElementById("typingIndicator");
+            if (indicator) {
+                chatBox.insertBefore(wrapper, indicator);
+            } else {
+                chatBox.appendChild(wrapper);
+            }
+            chatBox.scrollTop = chatBox.scrollHeight;
+        }
+
+        function setProcessingState(isProcessing) {
+            const input = document.getElementById("messageInput");
+            const btn = document.getElementById("sendButton");
+            const chatBox = document.getElementById("chatBox");
+            
+            if (isProcessing) {
+                input.disabled = true;
+                btn.disabled = true;
+                
+                if (!document.getElementById("typingIndicator")) {
+                    const wrapper = document.createElement("div");
+                    wrapper.id = "typingIndicator";
+                    wrapper.classList.add("message-wrapper", "agent");
+                    wrapper.innerHTML = `
+                        <div class="message-bubble typing-bubble">
+                            <span class="dot"></span><span class="dot"></span><span class="dot"></span>
+                        </div>
+                    `;
+                    chatBox.appendChild(wrapper);
+                    chatBox.scrollTop = chatBox.scrollHeight;
+                }
+            } else {
+                input.disabled = false;
+                btn.disabled = false;
+                input.focus();
+                
+                const indicator = document.getElementById("typingIndicator");
+                if (indicator) indicator.remove();
+            }
+        }
+
+        connection.on("ReceiveMessage", function (user, message) {
+            appendMessage(user, message);
+        });
+
+        connection.on("ReceiveNotification", function (message) {
+            const notificationBox = document.getElementById('notificationBox');
+            const time = new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+            
+            // Format message properly, assume it's just plain text for now, or you can use marked
+            const cardHTML = `
+                <div class="notification-card">
+                    <div class="meta">${time}</div>
+                    <div class="content">${message}</div>
+                </div>
+            `;
+            
+            notificationBox.insertAdjacentHTML('afterbegin', cardHTML);
+        });
+
+        connection.on("ApprovalRequested", function (requestId, toolName, toolArguments) {
+            document.getElementById("currentRequestId").value = requestId;
+            document.getElementById("approvalMessage").textContent = `Authorization required for: ${toolName}`;
+            document.getElementById("approvalArgs").textContent = JSON.stringify(toolArguments, null, 2);
+            approvalModal.show();
+        });
+
+        connection.start().catch(err => console.error(err.toString()));
+
+        document.getElementById("sendButton").addEventListener("click", function () {
+            const input = document.getElementById("messageInput");
+            const message = input.value.trim();
+            if (message) {
+                setProcessingState(true);
+                connection.invoke("SendMessage", "User", message)
+                    .catch(err => console.error(err))
+                    .finally(() => setProcessingState(false));
+                input.value = "";
+            }
+        });
+
+        document.getElementById("messageInput").addEventListener("keypress", function (e) {
+            if (e.key === "Enter") document.getElementById("sendButton").click();
+        });
+
+        document.getElementById("approveButton").addEventListener("click", function () {
+            const requestId = document.getElementById("currentRequestId").value;
+            connection.invoke("ApproveAction", requestId, true).catch(err => console.error(err));
+            approvalModal.hide();
+        });
+
+        document.getElementById("denyButton").addEventListener("click", function () {
+            const requestId = document.getElementById("currentRequestId").value;
+            connection.invoke("ApproveAction", requestId, false).catch(err => console.error(err));
+            approvalModal.hide();
+        });
+    </script>
+}
