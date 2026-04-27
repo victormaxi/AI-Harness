@@ -1,4 +1,4 @@
-﻿using AgentSolution;
+using AgentSolution;
 using AgentSolution.Models;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.AI;
@@ -10,6 +10,7 @@ namespace Agent_Harness.Services
     {
         Task<IEnumerable<ChatMessage>> GetChatHistoryAsync(string sessionId);
         Task SaveChatHistoryAsync(string sessionId, IEnumerable<ChatMessage> history);
+        Task ReplaceChatHistoryAsync(string sessionId, IEnumerable<ChatMessage> history);
     }
 
     // Services/EFCoreAgentMemoryService.cs
@@ -30,6 +31,21 @@ namespace Agent_Harness.Services
 
         public async Task SaveChatHistoryAsync(string sessionId, IEnumerable<ChatMessage> history)
         {
+            var entities = history.Select(m => new ChatMessageEntity
+            {
+                SessionId = sessionId,
+                Role = m.Role.Value,
+                Content = m.Text ?? string.Empty,
+                Timestamp = DateTime.UtcNow
+            });
+            await _dbContext.ChatMessages.AddRangeAsync(entities);
+            await _dbContext.SaveChangesAsync();
+        }
+        public async Task ReplaceChatHistoryAsync(string sessionId, IEnumerable<ChatMessage> history)
+        {
+            var existing = await _dbContext.ChatMessages.Where(m => m.SessionId == sessionId).ToListAsync();
+            _dbContext.ChatMessages.RemoveRange(existing);
+
             var entities = history.Select(m => new ChatMessageEntity
             {
                 SessionId = sessionId,

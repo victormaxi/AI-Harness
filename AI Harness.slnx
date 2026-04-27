@@ -4,4 +4,5 @@
   </Folder>
   <Project Path="Agent Harness/Agent Harness.csproj" />
   <Project Path="AgentSolution/AgentSolution.csproj" />
+  <Project Path="Test_Console/Test_Console.csproj" Id="a4cd8f80-2d11-4462-8aa4-27d534c0e331" />
 </Solution>

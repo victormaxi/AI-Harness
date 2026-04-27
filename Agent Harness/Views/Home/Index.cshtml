@@ -163,7 +163,7 @@
             const cardHTML = `
                 <div class="notification-card">
                     <div class="meta">${time}</div>
-                    <div class="content">${message}</div>
+                    <div class="content">${marked.parse(message)}</div>
                 </div>
             `;
             
@@ -175,6 +175,13 @@
             document.getElementById("approvalMessage").textContent = `Authorization required for: ${toolName}`;
             document.getElementById("approvalArgs").textContent = JSON.stringify(toolArguments, null, 2);
             approvalModal.show();
+        });
+
+        connection.on("RequireSignIn", function (scopes) {
+            appendMessage("System", `Authentication expired or missing for required scopes: ${scopes}. Redirecting to secure login gateway...`);
+            setTimeout(() => {
+                window.location.href = `/Auth/Challenge?scope=${encodeURIComponent(scopes)}`;
+            }, 1500);
         });
 
         connection.start().catch(err => console.error(err.toString()));

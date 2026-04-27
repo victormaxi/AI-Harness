@@ -1,6 +1,7 @@
 using Microsoft.AspNetCore.SignalR;
 using Microsoft.Graph;
 using Microsoft.Extensions.Hosting;
+using Microsoft.Extensions.DependencyInjection;
 using Agent_Harness.Hubs;
 using Azure.Identity;
 using System.Threading;
@@ -62,18 +63,42 @@ namespace Agent_Harness.Services
                         var latest = unreadMessages.Value[0];
                         _logger.LogInformation($"Real Event Detected: New Email from {latest.From?.EmailAddress?.Address}");
 
-                        // Store in cache for Agent access
-                        _eventCache.AddEvent(new DetectedEvent
+                        var evt = new DetectedEvent
                         {
                             SourceId = latest.Id, // The Microsoft Graph Message ID
                             Summary = $"Email from {latest.From?.EmailAddress?.Name}: {latest.Subject}",
                             Detail = $"From: {latest.From?.EmailAddress?.Address}\nSubject: {latest.Subject}\nBody Preview: {latest.BodyPreview}",
                             Type = "email"
-                        });
+                        };
 
-                        await _hubContext.Clients.All.SendAsync("ReceiveNotification", 
-                            $"Ambient Agent: I've detected a new email from {latest.From?.EmailAddress?.Name}. Subject: {latest.Subject}. Should I process it?", 
-                            stoppingToken);
+                        // Store in cache for Agent access
+                        _eventCache.AddEvent(evt);
+
+                        // Process in background to avoid blocking the polling loop
+                        _ = Task.Run(async () => 
+                        {
+                            try 
+                            {
+                                await _hubContext.Clients.All.SendAsync("ReceiveNotification", 
+                                    $"⏳ **Ambient Agent**: Detected new email from {latest.From?.EmailAddress?.Name}. Processing in background...", 
+                                    stoppingToken);
+
+                                using var scope = _serviceProvider.CreateScope();
+                                var agentHarness = scope.ServiceProvider.GetRequiredService<AdvancedAgentHarness>();
+                                var response = await agentHarness.ProcessAmbientEventAsync(evt);
+
+                                await _hubContext.Clients.All.SendAsync("ReceiveNotification", 
+                                    $"✅ **Ambient Agent Task Completed**\n\n{response}", 
+                                    stoppingToken);
+                            }
+                            catch (Exception ex)
+                            {
+                                _logger.LogError(ex, "Error processing ambient event.");
+                                await _hubContext.Clients.All.SendAsync("ReceiveNotification", 
+                                    $"❌ **Ambient Agent Error**: Failed to process email. {ex.Message}", 
+                                    stoppingToken);
+                            }
+                        });
                     }
                 }
                 catch (Exception ex)
